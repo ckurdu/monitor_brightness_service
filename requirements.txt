@@ -1,0 +1,4 @@
+# Optional dependency for keyboard shortcuts
+# Install with: pip install pynput (NOT pyinput!)
+# pynput is the correct package name for cross-platform input handling
+pynput>=1.7.0

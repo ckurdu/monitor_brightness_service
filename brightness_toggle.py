@@ -246,6 +246,9 @@ def run_manual_mode(controller):
 
 
 def main():
+    import sys
+    import os
+    
     print("Monitor Brightness Toggle for Debian Linux with KDE")
     print("==================================================")
 
@@ -260,29 +263,46 @@ def main():
         print("No displays found or xrandr not available")
         return
 
-    # Choose mode based on pynput availability
-    if PYNPUT_AVAILABLE:
-        print("\nChoose mode:")
-        print("1. Keyboard shortcut mode (Ctrl+Alt+B)")
-        print("2. Manual command mode")
-        print()
+    # Check if running in non-interactive mode (service)
+    is_service = not sys.stdin.isatty() or os.getenv('SYSTEMD_EXEC_PID') is not None
 
-        try:
-            choice = input("Enter choice (1 or 2, default=1): ").strip()
-            if choice == '2':
-                run_manual_mode(controller)
-            else:
-                print("\nStarting keyboard shortcut mode...")
-                if not run_with_keyboard_shortcut(controller):
-                    print("Falling back to manual mode...")
+    # Choose mode based on pynput availability and environment
+    if PYNPUT_AVAILABLE:
+        if is_service:
+            # Running as service - automatically use keyboard shortcut mode
+            print("\nRunning as service - starting keyboard shortcut mode...")
+            print("Press Ctrl+Alt+B to toggle brightness")
+            if not run_with_keyboard_shortcut(controller):
+                print("Keyboard shortcut mode failed!")
+                return
+        else:
+            # Interactive mode - ask user for preference
+            print("\nChoose mode:")
+            print("1. Keyboard shortcut mode (Ctrl+Alt+B)")
+            print("2. Manual command mode")
+            print()
+
+            try:
+                choice = input("Enter choice (1 or 2, default=1): ").strip()
+                if choice == '2':
                     run_manual_mode(controller)
-        except (EOFError, KeyboardInterrupt):
-            print("\nExiting...")
+                else:
+                    print("\nStarting keyboard shortcut mode...")
+                    if not run_with_keyboard_shortcut(controller):
+                        print("Falling back to manual mode...")
+                        run_manual_mode(controller)
+            except (EOFError, KeyboardInterrupt):
+                print("\nExiting...")
     else:
-        print("\npynput not available - using manual mode")
-        print("To enable keyboard shortcuts, install: pip install pynput")
-        print()
-        run_manual_mode(controller)
+        if is_service:
+            print("\nError: pynput not available - cannot run as service")
+            print("Install pynput: pip install pynput")
+            return
+        else:
+            print("\npynput not available - using manual mode")
+            print("To enable keyboard shortcuts, install: pip install pynput")
+            print()
+            run_manual_mode(controller)
 
 
 if __name__ == "__main__":

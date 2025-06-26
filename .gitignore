@@ -141,6 +141,11 @@ cython_debug/
 # Conda environment (if using conda)
 .conda/
 
+# Service and deployment logs
+*.log
+service.log
+deployment.log
+
 # IDE and editor files
 .vscode/
 .idea/

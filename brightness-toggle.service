@@ -1,0 +1,28 @@
+[Unit]
+Description=Monitor Brightness Toggle Service
+Documentation=https://github.com/user/monitor_brightness_on_off
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/projects/my/monitor_brightness_on_off/brightness_service.sh
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment variables
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=%t
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Resource limits
+MemoryMax=100M
+CPUQuota=10%
+
+[Install]
+WantedBy=default.target

@@ -1,6 +1,6 @@
 # Makefile for Monitor Brightness Toggle
 
-.PHONY: help install test clean uninstall start stop status logs
+.PHONY: help install test clean uninstall start stop status logs gui
 
 help:
 	@echo "Monitor Brightness Toggle - Available commands:"
@@ -11,8 +11,12 @@ help:
 	@echo "  make stop       - Stop the systemd service"
 	@echo "  make status     - Show service status"
 	@echo "  make logs       - Show service logs"
+	@echo "  make gui        - Start the GUI application"
 	@echo "  make clean      - Clean Python cache files"
 	@echo "  make uninstall  - Remove service and optionally environment"
+	@echo ""
+	@echo "GUI commands:"
+	@echo "  ./install_gui.sh - Install GUI dependencies and desktop integration"
 	@echo ""
 	@echo "Development commands:"
 	@echo "  ./dev.sh help   - Show all development commands"
@@ -38,6 +42,9 @@ logs:
 
 clean:
 	./dev.sh clean
+
+gui:
+	./brightness_gui.sh
 
 uninstall:
 	./uninstall.sh

@@ -7,6 +7,8 @@ Optimized for Debian Linux with KDE Plasma desktop environment.
 
 import subprocess
 import json
+import os
+import signal
 from pathlib import Path
 try:
     from pynput import keyboard
@@ -15,11 +17,18 @@ try:
 except ImportError:
     PYNPUT_AVAILABLE = False
 
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+
 
 class BrightnessController:
     def __init__(self):
         self.config_file = Path.home() / '.brightness_toggle_config.json'
         self.normal_brightness = 1.0  # Default normal brightness (100%)
+        self.low_brightness = 0.0  # Default low brightness (0%)
         self.is_dimmed = False
 
         # Load saved configuration
@@ -33,6 +42,8 @@ class BrightnessController:
                     config = json.load(f)
                     self.normal_brightness = config.get(
                         'normal_brightness', 1.0)
+                    self.low_brightness = config.get(
+                        'low_brightness', 0.0)
                     self.is_dimmed = config.get('is_dimmed', False)
         except Exception as e:
             print(f"Warning: Could not load config: {e}")
@@ -42,6 +53,7 @@ class BrightnessController:
         try:
             config = {
                 'normal_brightness': self.normal_brightness,
+                'low_brightness': self.low_brightness,
                 'is_dimmed': self.is_dimmed
             }
             with open(self.config_file, 'w') as f:
@@ -136,8 +148,8 @@ class BrightnessController:
                 # Save current brightness before dimming
                 self.save_current_brightness_as_normal()
 
-                # Dim to 0% brightness
-                success = self.set_brightness(0.0)
+                # Dim to low brightness
+                success = self.set_brightness(self.low_brightness)
                 if success:
                     self.is_dimmed = True
                     message = "Brightness set to 0%"
@@ -151,6 +163,80 @@ class BrightnessController:
             error_msg = f"Error toggling brightness: {e}"
             print(error_msg)
             self.show_kde_notification(error_msg)
+
+    def get_service_status(self):
+        """Get systemd service status"""
+        try:
+            result = subprocess.run(['systemctl', '--user', 'is-active', 'brightness-toggle'],
+                                    capture_output=True, text=True)
+            is_active = result.returncode == 0 and result.stdout.strip() == 'active'
+            
+            result = subprocess.run(['systemctl', '--user', 'is-enabled', 'brightness-toggle'],
+                                    capture_output=True, text=True)
+            is_enabled = result.returncode == 0 and result.stdout.strip() == 'enabled'
+            
+            return {
+                'active': is_active,
+                'enabled': is_enabled,
+                'status': 'running' if is_active else 'stopped'
+            }
+        except Exception as e:
+            print(f"Error getting service status: {e}")
+            return {'active': False, 'enabled': False, 'status': 'unknown'}
+
+    def start_service(self):
+        """Start the systemd service"""
+        try:
+            result = subprocess.run(['systemctl', '--user', 'start', 'brightness-toggle'],
+                                    capture_output=True, text=True, check=True)
+            return True, "Service started successfully"
+        except subprocess.CalledProcessError as e:
+            return False, f"Failed to start service: {e.stderr}"
+
+    def stop_service(self):
+        """Stop the systemd service"""
+        try:
+            result = subprocess.run(['systemctl', '--user', 'stop', 'brightness-toggle'],
+                                    capture_output=True, text=True, check=True)
+            return True, "Service stopped successfully"
+        except subprocess.CalledProcessError as e:
+            return False, f"Failed to stop service: {e.stderr}"
+
+    def enable_service(self):
+        """Enable the systemd service for auto-start"""
+        try:
+            result = subprocess.run(['systemctl', '--user', 'enable', 'brightness-toggle'],
+                                    capture_output=True, text=True, check=True)
+            return True, "Service enabled for auto-start"
+        except subprocess.CalledProcessError as e:
+            return False, f"Failed to enable service: {e.stderr}"
+
+    def disable_service(self):
+        """Disable the systemd service auto-start"""
+        try:
+            result = subprocess.run(['systemctl', '--user', 'disable', 'brightness-toggle'],
+                                    capture_output=True, text=True, check=True)
+            return True, "Service disabled from auto-start"
+        except subprocess.CalledProcessError as e:
+            return False, f"Failed to disable service: {e.stderr}"
+
+    def is_service_process_running(self):
+        """Check if brightness service process is running using psutil"""
+        if not PSUTIL_AVAILABLE:
+            return False
+        
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info['cmdline']
+                    if cmdline and len(cmdline) >= 2:
+                        if 'python' in cmdline[0] and 'brightness_toggle.py' in ' '.join(cmdline):
+                            return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            return False
+        except Exception:
+            return False
 
 
 class KeyboardShortcutHandler:

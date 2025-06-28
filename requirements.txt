@@ -2,3 +2,7 @@
 # Install with: pip install pynput (NOT pyinput!)
 # pynput is the correct package name for cross-platform input handling
 pynput>=1.7.0
+
+# GUI dependencies
+PySide6>=6.5.0
+psutil>=5.9.0

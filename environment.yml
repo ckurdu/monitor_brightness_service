@@ -7,3 +7,5 @@ dependencies:
   - pip
   - pip:
       - pynput>=1.7.0
+      - PySide6>=6.5.0
+      - psutil>=5.9.0

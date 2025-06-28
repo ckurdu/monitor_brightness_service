@@ -154,10 +154,11 @@ class BrightnessController:
 
 
 class KeyboardShortcutHandler:
-    def __init__(self, controller):
+    def __init__(self, controller, is_service=False):
         self.controller = controller
         self.ctrl_pressed = False
         self.alt_pressed = False
+        self.is_service = is_service
 
     def on_press(self, key):
         try:
@@ -178,7 +179,7 @@ class KeyboardShortcutHandler:
                 self.ctrl_pressed = False
             elif key == Key.alt_l or key == Key.alt_r:
                 self.alt_pressed = False
-            elif key == Key.esc:
+            elif key == Key.esc and not self.is_service:
                 print("Escape pressed - exiting...")
                 return False
         except AttributeError:
@@ -187,17 +188,18 @@ class KeyboardShortcutHandler:
     def start_listening(self):
         print("Keyboard shortcut listener started!")
         print("Press Ctrl+Alt+B to toggle brightness")
-        print("Press Escape to exit")
+        if not self.is_service:
+            print("Press Escape to exit")
         print()
 
         with Listener(on_press=self.on_press, on_release=self.on_release) as listener:
             listener.join()
 
 
-def run_with_keyboard_shortcut(controller):
+def run_with_keyboard_shortcut(controller, is_service=False):
     """Run with pynput keyboard shortcut support"""
     try:
-        handler = KeyboardShortcutHandler(controller)
+        handler = KeyboardShortcutHandler(controller, is_service)
         handler.start_listening()
         return True
     except Exception as e:
@@ -272,7 +274,7 @@ def main():
             # Running as service - automatically use keyboard shortcut mode
             print("\nRunning as service - starting keyboard shortcut mode...")
             print("Press Ctrl+Alt+B to toggle brightness")
-            if not run_with_keyboard_shortcut(controller):
+            if not run_with_keyboard_shortcut(controller, is_service):
                 print("Keyboard shortcut mode failed!")
                 return
         else:
@@ -288,7 +290,7 @@ def main():
                     run_manual_mode(controller)
                 else:
                     print("\nStarting keyboard shortcut mode...")
-                    if not run_with_keyboard_shortcut(controller):
+                    if not run_with_keyboard_shortcut(controller, False):
                         print("Falling back to manual mode...")
                         run_manual_mode(controller)
             except (EOFError, KeyboardInterrupt):

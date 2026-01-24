@@ -30,6 +30,8 @@ class BrightnessController:
         self.normal_brightness = 1.0  # Default normal brightness (100%)
         self.low_brightness = 0.0  # Default low brightness (0%)
         self.is_dimmed = False
+        self.mode = 'brightness'  # Default mode: 'brightness' or 'nightcolor'
+        self.night_color_enabled = False
 
         # Load saved configuration
         self.load_config()
@@ -45,6 +47,8 @@ class BrightnessController:
                     self.low_brightness = config.get(
                         'low_brightness', 0.0)
                     self.is_dimmed = config.get('is_dimmed', False)
+                    self.mode = config.get('mode', 'brightness')
+                    self.night_color_enabled = config.get('night_color_enabled', False)
         except Exception as e:
             print(f"Warning: Could not load config: {e}")
 
@@ -54,7 +58,9 @@ class BrightnessController:
             config = {
                 'normal_brightness': self.normal_brightness,
                 'low_brightness': self.low_brightness,
-                'is_dimmed': self.is_dimmed
+                'is_dimmed': self.is_dimmed,
+                'mode': self.mode,
+                'night_color_enabled': self.night_color_enabled
             }
             with open(self.config_file, 'w') as f:
                 json.dump(config, f)
@@ -121,6 +127,76 @@ class BrightnessController:
             # notify-send not available, just print
             pass
 
+    def get_night_color_status(self):
+        """Get Night Color status via D-Bus"""
+        try:
+            result = subprocess.run(
+                ['qdbus', 'org.kde.KWin', '/ColorCorrect',
+                 'org.kde.kwin.ColorCorrect.enabled'],
+                capture_output=True, text=True, check=True
+            )
+            return result.stdout.strip().lower() == 'true'
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Warning: Could not get Night Color status. Is KDE Plasma running?")
+            return False
+
+    def set_night_color(self, enabled):
+        """Enable or disable Night Color via D-Bus"""
+        try:
+            value = 'true' if enabled else 'false'
+            subprocess.run(
+                ['qdbus', 'org.kde.KWin', '/ColorCorrect',
+                 'org.kde.kwin.ColorCorrect.enabled', value],
+                check=True, capture_output=True
+            )
+            return True
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            print(f"Failed to set Night Color: {e}")
+            print("Make sure qdbus is installed: sudo apt install qdbus-qt5")
+            return False
+
+    def get_night_color_temperature(self):
+        """Get current Night Color temperature"""
+        try:
+            result = subprocess.run(
+                ['qdbus', 'org.kde.KWin', '/ColorCorrect',
+                 'org.kde.kwin.ColorCorrect.currentTemperature'],
+                capture_output=True, text=True, check=True
+            )
+            return int(result.stdout.strip())
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError):
+            return None
+
+    def toggle_night_color(self):
+        """Toggle Night Color on/off"""
+        try:
+            current_status = self.get_night_color_status()
+            new_status = not current_status
+            
+            success = self.set_night_color(new_status)
+            if success:
+                self.night_color_enabled = new_status
+                temp = self.get_night_color_temperature()
+                
+                if new_status:
+                    message = f"Night Color enabled"
+                    if temp:
+                        message += f" ({temp}K)"
+                    print(message)
+                    self.show_kde_notification(message)
+                else:
+                    message = "Night Color disabled"
+                    print(message)
+                    self.show_kde_notification(message)
+                
+                self.save_config()
+            return success
+        except Exception as e:
+            error_msg = f"Error toggling Night Color: {e}"
+            print(error_msg)
+            self.show_kde_notification(error_msg)
+            return False
+
     def save_current_brightness_as_normal(self):
         """Save current brightness as the normal brightness"""
         displays = self.get_displays()
@@ -133,34 +209,36 @@ class BrightnessController:
                 print(f"Saved current brightness ({brightness_pct:.0f}%) as normal")
 
     def toggle_brightness(self):
-        """Toggle between normal brightness and zero brightness"""
+        """Toggle between brightness modes or Night Color based on selected mode"""
         try:
-            if self.is_dimmed:
-                # Restore to normal brightness
-                success = self.set_brightness(self.normal_brightness)
-                if success:
-                    self.is_dimmed = False
-                    brightness_pct = self.normal_brightness * 100
-                    message = f"Brightness restored to {brightness_pct:.0f}%"
-                    print(message)
-                    self.show_kde_notification(message)
+            if self.mode == 'nightcolor':
+                # Toggle Night Color mode
+                self.toggle_night_color()
             else:
-                # Save current brightness before dimming
-                self.save_current_brightness_as_normal()
+                # Toggle brightness mode (default)
+                if self.is_dimmed:
+                    # Restore to normal brightness
+                    success = self.set_brightness(self.normal_brightness)
+                    if success:
+                        self.is_dimmed = False
+                        brightness_pct = self.normal_brightness * 100
+                        message = f"Brightness restored to {brightness_pct:.0f}%"
+                        print(message)
+                        self.show_kde_notification(message)
+                else:
+                    # Dim to low brightness
+                    success = self.set_brightness(self.low_brightness)
+                    if success:
+                        self.is_dimmed = True
+                        message = "Brightness set to 0%"
+                        print(message)
+                        self.show_kde_notification(message)
 
-                # Dim to low brightness
-                success = self.set_brightness(self.low_brightness)
                 if success:
-                    self.is_dimmed = True
-                    message = "Brightness set to 0%"
-                    print(message)
-                    self.show_kde_notification(message)
-
-            if success:
-                self.save_config()
+                    self.save_config()
 
         except Exception as e:
-            error_msg = f"Error toggling brightness: {e}"
+            error_msg = f"Error toggling: {e}"
             print(error_msg)
             self.show_kde_notification(error_msg)
 
@@ -297,9 +375,11 @@ def run_manual_mode(controller):
     """Run with manual command input"""
     print("Manual command mode")
     print("Commands:")
-    print("  t or toggle - Toggle brightness between 0% and normal")
-    print("  s or status - Show current status")
-    print("  q or quit   - Exit the program")
+    print("  t or toggle    - Toggle based on current mode")
+    print("  s or status    - Show current status")
+    print("  m or mode      - Switch between brightness/nightcolor mode")
+    print("  n or nightinfo - Show Night Color information")
+    print("  q or quit      - Exit the program")
     print()
 
     try:
@@ -310,20 +390,42 @@ def run_manual_mode(controller):
                 if command in ['t', 'toggle']:
                     controller.toggle_brightness()
                 elif command in ['s', 'status']:
-                    if controller.is_dimmed:
-                        status = "dimmed (0%)"
+                    print(f"Current mode: {controller.mode}")
+                    if controller.mode == 'nightcolor':
+                        nc_status = controller.get_night_color_status()
+                        temp = controller.get_night_color_temperature()
+                        print(f"Night Color: {'enabled' if nc_status else 'disabled'}")
+                        if temp:
+                            print(f"Temperature: {temp}K")
                     else:
-                        brightness_pct = controller.normal_brightness * 100
-                        status = f"normal ({brightness_pct:.0f}%)"
-                    print(f"Current brightness: {status}")
+                        if controller.is_dimmed:
+                            status = "dimmed (0%)"
+                        else:
+                            brightness_pct = controller.normal_brightness * 100
+                            status = f"normal ({brightness_pct:.0f}%)"
+                        print(f"Current brightness: {status}")
+                elif command in ['m', 'mode']:
+                    if controller.mode == 'brightness':
+                        controller.mode = 'nightcolor'
+                        print("Switched to Night Color mode")
+                    else:
+                        controller.mode = 'brightness'
+                        print("Switched to brightness mode")
+                    controller.save_config()
+                elif command in ['n', 'nightinfo']:
+                    nc_status = controller.get_night_color_status()
+                    temp = controller.get_night_color_temperature()
+                    print(f"Night Color status: {'enabled' if nc_status else 'disabled'}")
+                    if temp:
+                        print(f"Current temperature: {temp}K")
                 elif command in ['q', 'quit', 'exit']:
                     print("Exiting...")
                     break
                 elif command == '':
                     continue
                 else:
-                    print("Unknown command. Use 't' to toggle, 's' for status, "
-                          "'q' to quit.")
+                    print("Unknown command. Type 't' to toggle, 's' for status,")
+                    print("'m' to change mode, 'n' for night info, 'q' to quit.")
 
             except EOFError:
                 print("\nExiting...")

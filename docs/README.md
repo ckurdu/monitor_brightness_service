@@ -4,12 +4,13 @@ A Python service for toggling monitor brightness between 0% and normal levels us
 
 ## Features
 
-- 🔆 Toggle brightness between 0% and saved normal level
+- 🔆 **Dual Mode Support**: Toggle brightness OR KDE Night Color
 - ⌨️ Global keyboard shortcut (Ctrl+Alt+B)
+- 🌙 **Night Color Integration**: Control KDE Plasma Night Color via D-Bus
 - 🔧 Systemd service integration
 - 🐍 Conda environment for dependency isolation
 - 📱 KDE notifications
-- 💾 Persistent configuration storage
+- 💾 Persistent configuration storage with mode selection
 - 🖥️ Multi-monitor support
 - 🖥️ GUI system tray application for easy management
 
@@ -55,8 +56,8 @@ make gui
 ## System Requirements
 
 - **OS**: Debian/Ubuntu Linux with X11
-- **Desktop**: KDE Plasma (for notifications)
-- **Dependencies**: conda/miniconda, xrandr, notify-send
+- **Desktop**: KDE Plasma (for notifications and Night Color)
+- **Dependencies**: conda/miniconda, xrandr, notify-send, qdbus (for Night Color)
 - **Python**: 3.11+ (managed by conda)
 
 ## Project Structure
@@ -151,17 +152,40 @@ The application stores its configuration in `~/.brightness_toggle_config.json`:
 {
   "normal_brightness": 1.0,
   "low_brightness": 0.0,
-  "is_dimmed": false
+  "is_dimmed": false,
+  "mode": "brightness",
+  "night_color_enabled": false
 }
 ```
 
 - `normal_brightness`: High brightness level (0.1-1.0, default 1.0)
 - `low_brightness`: Low brightness level (0.0-0.5, default 0.0)
 - `is_dimmed`: Current brightness state
+- `mode`: Active mode - "brightness" or "nightcolor"
+- `night_color_enabled`: Last known Night Color state
+
+For details on Night Color mode, see [NIGHT_COLOR_MODE.md](NIGHT_COLOR_MODE.md).
 
 ## Keyboard Shortcut
 
-- **Ctrl+Alt+B**: Toggle brightness between 0% and normal level
+- **Ctrl+Alt+B**: Toggle brightness (or Night Color, depending on selected mode)
+
+## Mode Selection
+
+The application supports two operational modes:
+
+### 🔆 Brightness Mode (Default)
+- Toggles monitor brightness between 0% and normal level
+- Uses xrandr for hardware brightness control
+- Works with all monitors
+
+### 🌙 Night Color Mode
+- Toggles KDE Plasma Night Color on/off
+- Uses D-Bus to communicate with KDE's color correction
+- Shows current color temperature in notifications
+- Requires KDE Plasma desktop environment
+
+**To switch modes**, see the detailed [Night Color Mode Guide](NIGHT_COLOR_MODE.md).
 
 ## Conda Environment
 

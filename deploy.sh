@@ -55,6 +55,19 @@ if ! command_exists notify-send; then
     fi
 fi
 
+if ! command_exists qdbus; then
+    echo "Installing qdbus (for Night Color support)..."
+    if command_exists apt; then
+        sudo apt install -y qdbus-qt5
+    elif command_exists dnf; then
+        sudo dnf install -y qt5-qttools
+    elif command_exists pacman; then
+        sudo pacman -S qt5-tools
+    else
+        echo "Warning: Could not install qdbus. Night Color mode may not work."
+    fi
+fi
+
 # Create or update conda environment
 echo "Setting up conda environment..."
 if [ -f "$PROJECT_DIR/environment.yml" ]; then

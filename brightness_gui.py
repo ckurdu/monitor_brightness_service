@@ -51,12 +51,31 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.controller = controller
         self.setWindowTitle("Brightness Settings")
-        self.setFixedSize(400, 300)
+        self.setFixedSize(400, 350)
         self.setup_ui()
         self.load_settings()
     
     def setup_ui(self):
         layout = QVBoxLayout(self)
+        
+        # Mode selection group
+        mode_group = QGroupBox("Mode Selection")
+        mode_layout = QVBoxLayout(mode_group)
+        
+        from PySide6.QtWidgets import QRadioButton, QButtonGroup
+        
+        self.mode_group_buttons = QButtonGroup(self)
+        self.brightness_mode_radio = QRadioButton("Brightness Mode")
+        self.brightness_mode_radio.setToolTip("Toggle monitor brightness between high and low")
+        self.nightcolor_mode_radio = QRadioButton("Night Color Mode")
+        self.nightcolor_mode_radio.setToolTip("Toggle KDE Plasma Night Color on/off")
+        
+        self.mode_group_buttons.addButton(self.brightness_mode_radio, 0)
+        self.mode_group_buttons.addButton(self.nightcolor_mode_radio, 1)
+        
+        mode_layout.addWidget(self.brightness_mode_radio)
+        mode_layout.addWidget(self.nightcolor_mode_radio)
+        layout.addWidget(mode_group)
         
         # Brightness settings group
         brightness_group = QGroupBox("Brightness Levels")
@@ -106,6 +125,13 @@ class SettingsDialog(QDialog):
     
     def load_settings(self):
         """Load current settings into the dialog"""
+        # Load mode
+        if self.controller.mode == 'nightcolor':
+            self.nightcolor_mode_radio.setChecked(True)
+        else:
+            self.brightness_mode_radio.setChecked(True)
+        
+        # Load brightness levels
         normal_pct = int(self.controller.normal_brightness * 100)
         low_pct = int(self.controller.low_brightness * 100)
         
@@ -116,6 +142,13 @@ class SettingsDialog(QDialog):
     
     def save_settings(self):
         """Save settings and close dialog"""
+        # Save mode
+        if self.nightcolor_mode_radio.isChecked():
+            self.controller.mode = 'nightcolor'
+        else:
+            self.controller.mode = 'brightness'
+        
+        # Save brightness levels
         self.controller.normal_brightness = self.normal_slider.value() / 100.0
         self.controller.low_brightness = self.low_slider.value() / 100.0
         self.controller.save_config()
@@ -178,10 +211,31 @@ class BrightnessSystemTray(QSystemTrayIcon):
         self.menu.addAction(self.status_action)
         self.menu.addSeparator()
         
+        # Mode selection
+        mode_menu = self.menu.addMenu("Mode Selection")
+        
+        self.brightness_mode_action = QAction("Brightness Mode", self)
+        self.brightness_mode_action.setCheckable(True)
+        self.brightness_mode_action.triggered.connect(lambda: self.set_mode('brightness'))
+        mode_menu.addAction(self.brightness_mode_action)
+        
+        self.nightcolor_mode_action = QAction("Night Color Mode", self)
+        self.nightcolor_mode_action.setCheckable(True)
+        self.nightcolor_mode_action.triggered.connect(lambda: self.set_mode('nightcolor'))
+        mode_menu.addAction(self.nightcolor_mode_action)
+        
+        # Set initial mode
+        if self.controller.mode == 'nightcolor':
+            self.nightcolor_mode_action.setChecked(True)
+        else:
+            self.brightness_mode_action.setChecked(True)
+        
+        self.menu.addSeparator()
+        
         # Brightness controls
         brightness_menu = self.menu.addMenu("Brightness Control")
         
-        self.toggle_action = QAction("Toggle Brightness", self)
+        self.toggle_action = QAction("Toggle", self)
         self.toggle_action.triggered.connect(self.toggle_brightness)
         brightness_menu.addAction(self.toggle_action)
         
@@ -240,12 +294,14 @@ class BrightnessSystemTray(QSystemTrayIcon):
     
     def update_status(self, status):
         """Update UI based on service status"""
+        mode_display = "Night Color" if self.controller.mode == 'nightcolor' else "Brightness"
+        
         if status['active']:
-            self.status_action.setText("Status: Service Running")
+            self.status_action.setText(f"Status: Running ({mode_display})")
             self.start_service_action.setEnabled(False)
             self.stop_service_action.setEnabled(True)
         else:
-            self.status_action.setText("Status: Service Stopped")
+            self.status_action.setText(f"Status: Stopped ({mode_display})")
             self.start_service_action.setEnabled(True)
             self.stop_service_action.setEnabled(False)
         
@@ -256,16 +312,46 @@ class BrightnessSystemTray(QSystemTrayIcon):
             self.enable_service_action.setEnabled(True)
             self.disable_service_action.setEnabled(False)
     
-    def toggle_brightness(self):
-        """Toggle brightness between high and low"""
+    def set_mode(self, mode):
+        """Set the operating mode (brightness or nightcolor)"""
         try:
-            self.controller.toggle_brightness()
-            state = "Low" if self.controller.is_dimmed else "High"
-            self.showMessage("Brightness Toggle", 
-                           f"Brightness set to {state}",
+            self.controller.mode = mode
+            self.controller.save_config()
+            
+            # Update checkmarks
+            self.brightness_mode_action.setChecked(mode == 'brightness')
+            self.nightcolor_mode_action.setChecked(mode == 'nightcolor')
+            
+            mode_name = "Night Color" if mode == 'nightcolor' else "Brightness"
+            self.showMessage("Mode Changed", 
+                           f"Switched to {mode_name} mode",
                            QSystemTrayIcon.Information, 2000)
         except Exception as e:
-            self.showMessage("Error", f"Failed to toggle brightness: {e}",
+            self.showMessage("Error", f"Failed to change mode: {e}",
+                           QSystemTrayIcon.Critical, 3000)
+    
+    def toggle_brightness(self):
+        """Toggle brightness or Night Color based on current mode"""
+        try:
+            if self.controller.mode == 'nightcolor':
+                # Toggle Night Color
+                self.controller.toggle_night_color()
+                status = "enabled" if self.controller.night_color_enabled else "disabled"
+                temp = self.controller.get_night_color_temperature()
+                msg = f"Night Color {status}"
+                if temp and self.controller.night_color_enabled:
+                    msg += f" ({temp}K)"
+                self.showMessage("Night Color Toggle", msg,
+                               QSystemTrayIcon.Information, 2000)
+            else:
+                # Toggle brightness
+                self.controller.toggle_brightness()
+                state = "Low" if self.controller.is_dimmed else "High"
+                self.showMessage("Brightness Toggle", 
+                               f"Brightness set to {state}",
+                               QSystemTrayIcon.Information, 2000)
+        except Exception as e:
+            self.showMessage("Error", f"Failed to toggle: {e}",
                            QSystemTrayIcon.Critical, 3000)
     
     def set_high_brightness(self):

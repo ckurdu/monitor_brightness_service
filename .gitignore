@@ -147,7 +147,9 @@ service.log
 deployment.log
 
 # IDE and editor files
-.vscode/
+.vscode/*
+!.vscode/launch.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
